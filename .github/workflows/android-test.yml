@@ -50,6 +50,8 @@ jobs:
           arch: x86_64
           profile: pixel_6
           script: |
-            appium --log-timestamp &
+            appium --log-timestamp > appium.log 2>&1 &
+            APPIUM_PID=$!
             sleep 10
             pytest -v
+            kill $APPIUM_PID || true
