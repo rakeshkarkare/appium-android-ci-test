@@ -36,6 +36,15 @@ jobs:
         run: |
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          docker system prune -af || true
+          df -h
+
       - name: Enable KVM group perms
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -50,8 +59,28 @@ jobs:
           arch: x86_64
           profile: pixel_6
           script: |
+            echo "===== ADB device check ====="
+            adb devices -l
+
+            echo "===== Device properties ====="
+            adb shell getprop ro.build.version.release
+            adb shell getprop ro.product.model
+            adb shell wm size
+
+            echo "===== Starting Appium ====="
             appium --log-timestamp > appium.log 2>&1 &
             APPIUM_PID=$!
             sleep 10
-            pytest -v
+
+            echo "===== Appium health check ====="
+            curl -sf http://127.0.0.1:4723/status || (echo "Appium did not start correctly" && cat appium.log && exit 1)
+
+            echo "===== Running tests ====="
+            pytest -v test_smoke.py
+            TEST_EXIT_CODE=$?
+
+            echo "===== Appium log tail (last 50 lines) ====="
+            tail -n 50 appium.log
+
             kill $APPIUM_PID || true
+            exit $TEST_EXIT_CODE
